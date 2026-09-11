@@ -12,6 +12,7 @@ Automated GitHub Actions build pipeline that packages [Google Antigravity 2](htt
 - **Smart Change Detection**: Automatically compares newly detected upstream versions against existing GitHub releases to avoid redundant rebuilds.
 - **Delta Updates via `zsync`**: Embeds standard `gh-releases-zsync` update metadata into every built AppImage, enabling users to update to new releases by downloading only changed byte blocks.
 - **Clean Runtime Sandbox Handling**: The custom `AppRun` handles Electron runtime requirements and unprivileged user namespace profiles on modern Linux systems (e.g. Ubuntu 24.04+).
+- **Local Testing & Verification**: Includes a local test runner and Makefile (`make test`, `make build`, `make check`) to test and build locally.
 - **Manual Trigger Support**: Easily trigger builds on-demand or specify custom versions via GitHub's `workflow_dispatch` interface.
 
 ---
@@ -52,6 +53,68 @@ Or use graphical desktop managers such as **AppImageLauncher** or **AppImageUpda
 
 ---
 
+## Local Development & Testing
+
+A `Makefile` and test script are provided to make local building and testing straightforward.
+
+### Quick Commands
+
+```bash
+# Show all available Makefile commands
+make help
+
+# Check upstream for the latest release
+make check
+
+# Run local build pipeline test (dry run / mock)
+make test
+
+# Validate desktop file, scripts, and workflow YAML
+make validate
+
+# Build the latest upstream release locally
+make build
+```
+
+### Advanced Local Testing via `test-local-build.sh`
+
+The test runner [`scripts/test-local-build.sh`](scripts/test-local-build.sh) supports multiple testing modes:
+
+```bash
+# 1. Fast offline smoke test with synthetic mock package (no network download):
+./scripts/test-local-build.sh --mock
+
+# 2. Dry-run verification (validates AppDir assembly and permissions without appimagetool):
+./scripts/test-local-build.sh --dry-run
+
+# 3. Test using an existing local Antigravity.tar.gz file:
+./scripts/test-local-build.sh --tarball /path/to/Antigravity.tar.gz
+
+# 4. Full end-to-end test with live upstream download:
+./scripts/test-local-build.sh --full
+```
+
+### Manual Local Build via `build-appimage.sh`
+
+```bash
+# Automatically fetch and build the latest version:
+./scripts/build-appimage.sh --latest
+
+# Or build from an existing local tarball:
+./scripts/build-appimage.sh \
+  --version "2.12.2" \
+  --tarball "/path/to/Antigravity.tar.gz" \
+  --repo "your-username/antigravity-appimage" \
+  --output-dir "./dist"
+```
+
+Artifacts are produced in `./dist/`:
+- `Antigravity-<version>-x86_64.AppImage`
+- `Antigravity-<version>-x86_64.AppImage.zsync`
+- `SHA256SUMS.txt`
+
+---
+
 ## Repository Structure
 
 ```
@@ -65,46 +128,13 @@ Or use graphical desktop managers such as **AppImageLauncher** or **AppImageUpda
 ├── scripts/
 │   ├── AppRun                    # AppImage entrypoint script (Electron sandbox & path setup)
 │   ├── build-appimage.sh         # AppDir assembly and appimagetool packager
-│   └── check-version.py          # Upstream version scraper and GitHub release comparator
+│   ├── check-version.py          # Upstream version scraper and GitHub release comparator
+│   └── test-local-build.sh       # Local build and pipeline verification runner
 ├── .gitignore
+├── LICENSE
+├── Makefile                      # Developer shortcut targets
 └── README.md
 ```
-
----
-
-## Local Development & Manual Builds
-
-### 1. Check for the Latest Upstream Version
-
-```bash
-python3 scripts/check-version.py --check-only
-```
-
-Sample output:
-```json
-{
-  "version": "2.12.2",
-  "execution_id": "6298742303883264",
-  "download_url": "https://storage.googleapis.com/antigravity-public/antigravity-hub/2.12.2-6298742303883264/linux-x64/Antigravity.tar.gz"
-}
-```
-
-### 2. Build the AppImage Locally
-
-You can run the build script locally on Linux:
-
-```bash
-./scripts/build-appimage.sh \
-  --version "2.12.2" \
-  --download-url "https://storage.googleapis.com/antigravity-public/antigravity-hub/2.12.2-6298742303883264/linux-x64/Antigravity.tar.gz" \
-  --repo "your-username/antigravity-appimage" \
-  --output-dir "./dist"
-```
-
-The output AppImage and `.zsync` files will be placed into `./dist/`:
-- `dist/Antigravity-2.12.2-x86_64.AppImage`
-- `dist/Antigravity-2.12.2-x86_64.AppImage.zsync`
-- `dist/SHA256SUMS.txt`
 
 ---
 

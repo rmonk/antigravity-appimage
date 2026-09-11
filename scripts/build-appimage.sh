@@ -6,33 +6,63 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 VERSION=""
 DOWNLOAD_URL=""
+TARBALL_PATH=""
+USE_LATEST=false
+DRY_RUN=false
+APPIMAGETOOL_CUSTOM=""
 REPO="${GITHUB_REPOSITORY:-}"
 OUTPUT_DIR="${ROOT_DIR}/dist"
 
 usage() {
     cat << USAGE
-Usage: $0 --version <VERSION> --download-url <URL> [--repo <OWNER/REPO>] [--output-dir <DIR>]
+Usage: $0 [OPTIONS]
 
 Builds a Google Antigravity AppImage with AppImageUpdate configuration.
 
 Options:
-  --version       Version number (e.g. 2.12.2)
-  --download-url  Direct URL to Antigravity.tar.gz
-  --repo          GitHub repository in 'owner/repo' format (used for update info)
-  --output-dir    Destination directory for AppImage artifacts (default: ./dist)
-  -h, --help      Show this help message
+  --latest                  Automatically detect and build the latest upstream release
+  --version <VERSION>       Specify version number (e.g. 2.12.2)
+  --download-url <URL>      Direct URL to Antigravity.tar.gz
+  --tarball <PATH>          Path to an existing local Antigravity.tar.gz (skips download)
+  --appimagetool <PATH>     Path to an existing appimagetool binary or AppImage
+  --repo <OWNER/REPO>       GitHub repository in 'owner/repo' format (for update metadata)
+  --output-dir <DIR>        Destination directory for AppImage artifacts (default: ./dist)
+  --dry-run                 Assemble AppDir and validate structure, but skip final AppImage packaging
+  -h, --help                Show this help message
+
+Examples:
+  # Build the latest upstream release:
+  $0 --latest
+
+  # Test build using a local tarball:
+  $0 --version 2.12.2 --tarball /path/to/Antigravity.tar.gz
+
+  # Build specific version with download URL:
+  $0 --version 2.12.2 --download-url https://storage.googleapis.com/...
 USAGE
     exit 1
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --latest)
+            USE_LATEST=true
+            shift 1
+            ;;
         --version)
             VERSION="$2"
             shift 2
             ;;
         --download-url)
             DOWNLOAD_URL="$2"
+            shift 2
+            ;;
+        --tarball)
+            TARBALL_PATH="$2"
+            shift 2
+            ;;
+        --appimagetool)
+            APPIMAGETOOL_CUSTOM="$2"
             shift 2
             ;;
         --repo)
@@ -42,6 +72,10 @@ while [[ $# -gt 0 ]]; do
         --output-dir)
             OUTPUT_DIR="$2"
             shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift 1
             ;;
         -h|--help)
             usage
@@ -53,17 +87,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "${VERSION}" || -z "${DOWNLOAD_URL}" ]]; then
-    echo "Error: --version and --download-url are required." >&2
+# If --latest is specified, query scripts/check-version.py
+if [[ "${USE_LATEST}" == "true" ]]; then
+    echo "==> Querying latest upstream Antigravity 2.x release..."
+    CHECK_INFO="$(python3 "${SCRIPT_DIR}/check-version.py" --check-only)"
+    DETECTED_VERSION="$(echo "${CHECK_INFO}" | python3 -c "import sys, json; print(json.load(sys.stdin).get('version', ''))")"
+    DETECTED_URL="$(echo "${CHECK_INFO}" | python3 -c "import sys, json; print(json.load(sys.stdin).get('download_url', ''))")"
+
+    if [[ -z "${VERSION}" ]]; then
+        VERSION="${DETECTED_VERSION}"
+    fi
+    if [[ -z "${DOWNLOAD_URL}" && -z "${TARBALL_PATH}" ]]; then
+        DOWNLOAD_URL="${DETECTED_URL}"
+    fi
+fi
+
+if [[ -z "${VERSION}" ]]; then
+    echo "Error: Version not specified. Provide --version <VER> or use --latest." >&2
     usage
+fi
+
+if [[ -z "${DOWNLOAD_URL}" && -z "${TARBALL_PATH}" ]]; then
+    echo "Error: No download source specified. Provide --download-url <URL>, --tarball <PATH>, or use --latest." >&2
+    usage
+fi
+
+# Detect repository if not provided
+if [[ -z "${REPO}" ]]; then
+    REMOTE_URL="$(git -C "${ROOT_DIR}" config --get remote.origin.url 2>/dev/null || true)"
+    if [[ "${REMOTE_URL}" =~ github\.com[:/]([^/]+)/([^/.]+)(\.git)?$ ]]; then
+        REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    else
+        REPO="antigravity/antigravity-appimage"
+    fi
 fi
 
 echo "=================================================="
 echo " Building Antigravity AppImage"
-echo " Version:      ${VERSION}"
-echo " Download URL: ${DOWNLOAD_URL}"
-echo " Repository:   ${REPO:-<none>}"
-echo " Output Dir:   ${OUTPUT_DIR}"
+echo " Version:       ${VERSION}"
+echo " Source:        ${TARBALL_PATH:-${DOWNLOAD_URL}}"
+echo " Repository:    ${REPO}"
+echo " Output Dir:    ${OUTPUT_DIR}"
+echo " Dry Run:       ${DRY_RUN}"
 echo "=================================================="
 
 WORK_DIR="$(mktemp -d -t antigravity-build-XXXXXX)"
@@ -73,11 +138,20 @@ APPDIR="${WORK_DIR}/AppDir"
 mkdir -p "${APPDIR}" "${OUTPUT_DIR}"
 
 # ----------------------------------------------------
-# 1. Download Antigravity tarball
+# 1. Obtain Antigravity tarball
 # ----------------------------------------------------
-echo "==> Downloading Antigravity tarball..."
 TAR_FILE="${WORK_DIR}/Antigravity.tar.gz"
-curl -sSL --fail --retry 3 --retry-delay 2 "${DOWNLOAD_URL}" -o "${TAR_FILE}"
+if [[ -n "${TARBALL_PATH}" ]]; then
+    if [[ ! -f "${TARBALL_PATH}" ]]; then
+        echo "Error: Local tarball not found: ${TARBALL_PATH}" >&2
+        exit 1
+    fi
+    echo "==> Using local tarball: ${TARBALL_PATH}"
+    cp "${TARBALL_PATH}" "${TAR_FILE}"
+else
+    echo "==> Downloading Antigravity tarball from: ${DOWNLOAD_URL}..."
+    curl -sSL --fail --retry 3 --retry-delay 2 "${DOWNLOAD_URL}" -o "${TAR_FILE}"
+fi
 
 echo "==> Extracting Antigravity tarball..."
 EXTRACT_DIR="${WORK_DIR}/extracted"
@@ -112,13 +186,13 @@ mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
 cp -a "${APP_SOURCE_DIR}/." "${APPDIR}/opt/antigravity/"
 chmod +x "${APPDIR}/opt/antigravity/antigravity"
 
-# Create symlink in /usr/bin/antigravity and AppDir root
+# Create symlinks in /usr/bin/antigravity and AppDir root
 ln -sf "../opt/antigravity/antigravity" "${APPDIR}/usr/bin/antigravity"
 ln -sf "opt/antigravity/antigravity" "${APPDIR}/antigravity"
 
 # Fix chrome-sandbox permissions if present
 if [[ -f "${APPDIR}/opt/antigravity/chrome-sandbox" ]]; then
-    chmod 4755 "${APPDIR}/opt/antigravity/chrome-sandbox" || chmod +x "${APPDIR}/opt/antigravity/chrome-sandbox"
+    chmod 4755 "${APPDIR}/opt/antigravity/chrome-sandbox" 2>/dev/null || chmod +x "${APPDIR}/opt/antigravity/chrome-sandbox"
 fi
 
 # Install Desktop Entry
@@ -151,12 +225,31 @@ fi
 cp "${ROOT_DIR}/scripts/AppRun" "${APPDIR}/AppRun"
 chmod +x "${APPDIR}/AppRun"
 
+echo "==> AppDir assembly completed successfully."
+
+# If dry-run requested, validate AppDir and exit early
+if [[ "${DRY_RUN}" == "true" ]]; then
+    echo "==> Dry run mode enabled. Validating AppDir..."
+    test -x "${APPDIR}/AppRun" || { echo "Error: AppRun is not executable"; exit 1; }
+    test -f "${APPDIR}/antigravity.desktop" || { echo "Error: Missing antigravity.desktop"; exit 1; }
+    test -f "${APPDIR}/antigravity.png" || { echo "Error: Missing antigravity.png"; exit 1; }
+    test -x "${APPDIR}/opt/antigravity/antigravity" || { echo "Error: antigravity binary not executable"; exit 1; }
+    echo "==> AppDir validation passed. (Skipping appimagetool due to --dry-run)"
+    exit 0
+fi
+
 # ----------------------------------------------------
 # 3. Setup appimagetool
 # ----------------------------------------------------
 echo "==> Preparing appimagetool..."
 APPIMAGETOOL_BIN=""
-if command -v appimagetool >/dev/null 2>&1; then
+if [[ -n "${APPIMAGETOOL_CUSTOM}" ]]; then
+    if [[ ! -x "${APPIMAGETOOL_CUSTOM}" ]]; then
+        echo "Error: Specified appimagetool is not executable: ${APPIMAGETOOL_CUSTOM}" >&2
+        exit 1
+    fi
+    APPIMAGETOOL_BIN="${APPIMAGETOOL_CUSTOM}"
+elif command -v appimagetool >/dev/null 2>&1; then
     APPIMAGETOOL_BIN="appimagetool"
 else
     TOOL_PATH="${WORK_DIR}/appimagetool-x86_64.AppImage"
@@ -164,7 +257,7 @@ else
     curl -sSL --fail --retry 3 "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o "${TOOL_PATH}"
     chmod +x "${TOOL_PATH}"
 
-    # Extract appimagetool to avoid FUSE dependency issues in CI environments
+    # Extract appimagetool to avoid FUSE dependency issues
     echo "Extracting appimagetool..."
     (cd "${WORK_DIR}" && "${TOOL_PATH}" --appimage-extract >/dev/null 2>&1)
     APPIMAGETOOL_BIN="${WORK_DIR}/squashfs-root/AppRun"
@@ -200,9 +293,9 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # ----------------------------------------------------
 echo "==> Generating SHA256 checksums..."
 cd "${OUTPUT_DIR}"
-sha256sum "Antigravity-${VERSION}-x86_64.AppImage" > SHA256SUMS.txt
-if [[ -f "Antigravity-${VERSION}-x86_64.AppImage.zsync" ]]; then
-    sha256sum "Antigravity-${VERSION}-x86_64.AppImage.zsync" >> SHA256SUMS.txt
+sha256sum "${APPIMAGE_NAME}" > SHA256SUMS.txt
+if [[ -f "${APPIMAGE_NAME}.zsync" ]]; then
+    sha256sum "${APPIMAGE_NAME}.zsync" >> SHA256SUMS.txt
 fi
 
 echo "=================================================="

@@ -202,12 +202,12 @@ def main():
     download_url = release_info["download_url"]
     tag = f"v{version}"
 
-    print(f"Latest Antigravity 2.x release detected: {version} (build: {execution_id})")
-    print(f"Download URL: {download_url}")
-
     if args.check_only:
         print(json.dumps(release_info, indent=2))
         return 0
+
+    print(f"Latest Antigravity 2.x release detected: {version} (build: {execution_id})")
+    print(f"Download URL: {download_url}")
 
     update_available = False
     if args.force:
