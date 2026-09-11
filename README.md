@@ -2,7 +2,7 @@
 
 Automated GitHub Actions build pipeline that packages [Google Antigravity 2](https://antigravity.google) for Linux (x64) into a portable, self-updating **AppImage**.
 
-[![Build and Release Antigravity AppImage](https://github.com/OWNER/REPOSITORY/actions/workflows/build-appimage.yml/badge.svg)](https://github.com/OWNER/REPOSITORY/actions/workflows/build-appimage.yml)
+[![Build and Release Antigravity AppImage](https://github.com/rmonk/antigravity-appimage/actions/workflows/build-appimage.yml/badge.svg)](https://github.com/rmonk/antigravity-appimage/actions/workflows/build-appimage.yml)
 
 ---
 
@@ -21,7 +21,7 @@ Automated GitHub Actions build pipeline that packages [Google Antigravity 2](htt
 
 ### 1. Download
 
-Download the latest `Antigravity-*-x86_64.AppImage` from the [Releases](https://github.com/OWNER/REPOSITORY/releases/latest) page.
+Download the latest `Antigravity-*-x86_64.AppImage` from the [Releases](https://github.com/rmonk/antigravity-appimage/releases/latest) page.
 
 ### 2. Make Executable and Run
 
@@ -37,7 +37,7 @@ chmod +x Antigravity-*-x86_64.AppImage
 This AppImage is built with embedded update configuration pointing directly to this repository's GitHub Releases:
 
 ```text
-gh-releases-zsync|<owner>|<repo>|latest|Antigravity*-x86_64.AppImage.zsync
+gh-releases-zsync|rmonk|antigravity-appimage|latest|Antigravity*-x86_64.AppImage.zsync
 ```
 
 ### Updating with `appimageupdatetool`
@@ -104,7 +104,7 @@ The test runner [`scripts/test-local-build.sh`](scripts/test-local-build.sh) sup
 ./scripts/build-appimage.sh \
   --version "2.12.2" \
   --tarball "/path/to/Antigravity.tar.gz" \
-  --repo "your-username/antigravity-appimage" \
+  --repo "rmonk/antigravity-appimage" \
   --output-dir "./dist"
 ```
 

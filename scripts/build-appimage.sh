@@ -118,7 +118,7 @@ if [[ -z "${REPO}" ]]; then
     if [[ "${REMOTE_URL}" =~ github\.com[:/]([^/]+)/([^/.]+)(\.git)?$ ]]; then
         REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
     else
-        REPO="antigravity/antigravity-appimage"
+        REPO="rmonk/antigravity-appimage"
     fi
 fi
 
