@@ -122,6 +122,10 @@ if [[ -z "${REPO}" ]]; then
     fi
 fi
 
+# Ensure OUTPUT_DIR exists and is an absolute path
+mkdir -p "${OUTPUT_DIR}"
+OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd)"
+
 echo "=================================================="
 echo " Building Antigravity AppImage"
 echo " Version:       ${VERSION}"
@@ -292,11 +296,13 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # 6. Generate Checksums
 # ----------------------------------------------------
 echo "==> Generating SHA256 checksums..."
-cd "${OUTPUT_DIR}"
-sha256sum "${APPIMAGE_NAME}" > SHA256SUMS.txt
-if [[ -f "${APPIMAGE_NAME}.zsync" ]]; then
-    sha256sum "${APPIMAGE_NAME}.zsync" >> SHA256SUMS.txt
-fi
+(
+    cd "${OUTPUT_DIR}"
+    sha256sum "${APPIMAGE_NAME}" > SHA256SUMS.txt
+    if [[ -f "${APPIMAGE_NAME}.zsync" ]]; then
+        sha256sum "${APPIMAGE_NAME}.zsync" >> SHA256SUMS.txt
+    fi
+)
 
 echo "=================================================="
 echo " Build Complete!"

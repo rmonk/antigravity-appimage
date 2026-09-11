@@ -98,11 +98,13 @@ jobs:
             --version "${VERSION}" \
             --download-url "${DOWNLOAD_URL}" \
             --repo "${REPO}" \
-            --output-dir dist
+            --output-dir "${GITHUB_WORKSPACE}/dist"
 
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.check-version.outputs.version }}
           TAG: ${{ needs.check-version.outputs.tag }}
           DL_URL: ${{ needs.check-version.outputs.download_url }}
