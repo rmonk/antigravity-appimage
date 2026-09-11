@@ -1,0 +1,28 @@
+# AppImage build artifacts
+*.AppImage
+*.zsync
+*.tar.gz
+SHA256SUMS.txt
+
+# Build staging directories
+AppDir/
+build/
+dist/
+out/
+appimagetool*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# System and editor files
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

@@ -1,0 +1,154 @@
+name: Build and Release Antigravity AppImage
+
+'on':
+  schedule:
+    # Run every 12 hours (at 00:00 and 12:00 UTC)
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if release already exists'
+        type: boolean
+        default: false
+      override_version:
+        description: 'Manually override version (e.g. 2.12.2)'
+        type: string
+        required: false
+      override_execution_id:
+        description: 'Manually override build/execution ID'
+        type: string
+        required: false
+      override_download_url:
+        description: 'Manually override tarball download URL'
+        type: string
+        required: false
+
+concurrency:
+  group: antigravity-appimage-build
+  cancel-in-progress: false
+
+jobs:
+  check-version:
+    name: Check for New Upstream Version
+    runs-on: ubuntu-latest
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      version: ${{ steps.check.outputs.version }}
+      execution_id: ${{ steps.check.outputs.execution_id }}
+      download_url: ${{ steps.check.outputs.download_url }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check latest version against GitHub Releases
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ARGS=(--repo "${GITHUB_REPOSITORY}" --token "${GITHUB_TOKEN}")
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.force_build }}" == "true" ]]; then
+              ARGS+=(--force)
+            fi
+            if [[ -n "${{ inputs.override_version }}" ]]; then
+              ARGS+=(--override-version "${{ inputs.override_version }}")
+            fi
+            if [[ -n "${{ inputs.override_execution_id }}" ]]; then
+              ARGS+=(--override-execution-id "${{ inputs.override_execution_id }}")
+            fi
+            if [[ -n "${{ inputs.override_download_url }}" ]]; then
+              ARGS+=(--override-download-url "${{ inputs.override_download_url }}")
+            fi
+          fi
+
+          python3 scripts/check-version.py "${ARGS[@]}"
+
+  build-and-release:
+    name: Build AppImage and Publish Release
+    needs: check-version
+    if: needs.check-version.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 zsync file curl
+
+      - name: Build Antigravity AppImage
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+          DOWNLOAD_URL: ${{ needs.check-version.outputs.download_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          ./scripts/build-appimage.sh \
+            --version "${VERSION}" \
+            --download-url "${DOWNLOAD_URL}" \
+            --repo "${REPO}" \
+            --output-dir dist
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+          TAG: ${{ needs.check-version.outputs.tag }}
+          DL_URL: ${{ needs.check-version.outputs.download_url }}
+        run: |
+          RELEASE_TITLE="Google Antigravity v${VERSION}"
+          
+          NOTES=$(cat << EOF
+          ## Google Antigravity v${VERSION} (x64) AppImage
+
+          Automated AppImage build for **Google Antigravity 2 (x64)**.
+
+          - **Upstream Version**: \`${VERSION}\`
+          - **Upstream Source**: ${DL_URL}
+          - **Update Protocol**: Delta updates configured via \`zsync\` (\`gh-releases-zsync|${{ github.repository }}|latest|Antigravity*-x86_64.AppImage.zsync\`)
+
+          ### How to Run
+
+          \`\`\`bash
+          chmod +x Antigravity-${VERSION}-x86_64.AppImage
+          ./Antigravity-${VERSION}-x86_64.AppImage
+          \`\`\`
+
+          ### Updating
+
+          This AppImage embeds official AppImage update configuration. You can update it anytime using [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) or \`appimageupdatetool\`:
+
+          \`\`\`bash
+          appimageupdatetool Antigravity-${VERSION}-x86_64.AppImage
+          \`\`\`
+
+          ### Verification Checksums
+
+          \`\`\`
+          $(cat dist/SHA256SUMS.txt)
+          \`\`\`
+          EOF
+          )
+
+          # Check if the release tag already exists
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists. Updating release assets..."
+            gh release upload "${TAG}" dist/* --clobber
+          else
+            echo "Creating new GitHub Release: ${TAG}..."
+            gh release create "${TAG}" dist/* \
+              --title "${RELEASE_TITLE}" \
+              --notes "${NOTES}" \
+              --latest
+          fi

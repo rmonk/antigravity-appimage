@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+# Determine the absolute directory where AppRun is located
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+export PATH="${HERE}/usr/bin:${HERE}/opt/antigravity:${HERE}:${PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${HERE}/opt/antigravity:${HERE}/lib:${HERE}:${LD_LIBRARY_PATH}"
+
+# Check for the antigravity executable
+EXECUTABLE=""
+if [ -x "${HERE}/usr/bin/antigravity" ]; then
+    EXECUTABLE="${HERE}/usr/bin/antigravity"
+elif [ -x "${HERE}/opt/antigravity/antigravity" ]; then
+    EXECUTABLE="${HERE}/opt/antigravity/antigravity"
+elif [ -x "${HERE}/antigravity" ]; then
+    EXECUTABLE="${HERE}/antigravity"
+elif [ -x "${HERE}/Antigravity" ]; then
+    EXECUTABLE="${HERE}/Antigravity"
+fi
+
+if [ -z "${EXECUTABLE}" ]; then
+    echo "Error: Antigravity executable not found in AppDir (${HERE})" >&2
+    exit 1
+fi
+
+# Detect unprivileged user namespace restrictions on modern Linux (e.g. Ubuntu 24.04+)
+SANDBOX_ARGS=()
+if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+    if ! echo "$@" | grep -q -- '--no-sandbox'; then
+        SANDBOX_ARGS+=("--no-sandbox")
+    fi
+fi
+
+exec "${EXECUTABLE}" "${SANDBOX_ARGS[@]}" "$@"
