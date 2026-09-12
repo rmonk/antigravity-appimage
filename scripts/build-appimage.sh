@@ -290,7 +290,40 @@ echo "==> Running appimagetool..."
 export ARCH="x86_64"
 export APPIMAGE_EXTRACT_AND_RUN=1
 
-"${APPIMAGETOOL_BIN}" "${UPDATE_ARGS[@]}" "${APPDIR}" "${OUTPUT_DIR}/${APPIMAGE_NAME}"
+(
+    cd "${OUTPUT_DIR}"
+    "${APPIMAGETOOL_BIN}" "${UPDATE_ARGS[@]}" "${APPDIR}" "${APPIMAGE_NAME}"
+)
+
+# appimagetool or zsyncmake may generate the .zsync file in the current working directory,
+# ROOT_DIR, or OUTPUT_DIR. Ensure the .zsync file is placed in OUTPUT_DIR.
+if [[ ! -f "${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync" ]]; then
+    if [[ -f "${ROOT_DIR}/${APPIMAGE_NAME}.zsync" ]]; then
+        mv "${ROOT_DIR}/${APPIMAGE_NAME}.zsync" "${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync"
+    elif [[ -f "${APPIMAGE_NAME}.zsync" ]]; then
+        mv "${APPIMAGE_NAME}.zsync" "${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync"
+    fi
+fi
+
+# Fallback: If .zsync was still not produced but zsyncmake is installed, build it explicitly
+if [[ ! -f "${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync" ]] && command -v zsyncmake >/dev/null 2>&1; then
+    echo "==> Generating .zsync file explicitly via zsyncmake..."
+    (
+        cd "${OUTPUT_DIR}"
+        zsyncmake -u "${APPIMAGE_NAME}" "${APPIMAGE_NAME}"
+    )
+fi
+
+if [[ -n "${UPDATE_STRING:-}" ]]; then
+    if [[ -f "${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync" ]]; then
+        echo "==> Verified zsync metadata file: ${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync"
+    elif command -v zsyncmake >/dev/null 2>&1; then
+        echo "Error: Failed to create zsync file: ${OUTPUT_DIR}/${APPIMAGE_NAME}.zsync" >&2
+        exit 1
+    else
+        echo "Warning: zsyncmake not available; .zsync file could not be produced." >&2
+    fi
+fi
 
 # ----------------------------------------------------
 # 6. Generate Checksums

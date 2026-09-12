@@ -220,8 +220,10 @@ else
     # Check zsync file
     if [[ -f "${ZSYNC_FILE}" ]]; then
         pass "zsync update metadata file generated: $(basename "${ZSYNC_FILE}")"
+    elif command -v zsyncmake >/dev/null 2>&1; then
+        fail "zsync file not found: $(basename "${ZSYNC_FILE}")"
     else
-        warn "zsync file not found (appimagetool may have skipped zsync)"
+        warn "zsync file not found (zsyncmake is not installed locally)"
     fi
 
     # Check checksum file
