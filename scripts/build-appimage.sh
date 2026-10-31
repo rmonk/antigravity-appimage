@@ -194,9 +194,11 @@ chmod +x "${APPDIR}/opt/antigravity/antigravity"
 ln -sf "../opt/antigravity/antigravity" "${APPDIR}/usr/bin/antigravity"
 ln -sf "opt/antigravity/antigravity" "${APPDIR}/antigravity"
 
-# Fix chrome-sandbox permissions if present
+# Clear setuid on chrome-sandbox if present. AppImages are mounted nosuid, so the
+# bit has no effect (and appimagetool rejects it); Electron falls back to the
+# user-namespace sandbox, and AppRun adds --no-sandbox where userns is restricted.
 if [[ -f "${APPDIR}/opt/antigravity/chrome-sandbox" ]]; then
-    chmod 4755 "${APPDIR}/opt/antigravity/chrome-sandbox" 2>/dev/null || chmod +x "${APPDIR}/opt/antigravity/chrome-sandbox"
+    chmod 0755 "${APPDIR}/opt/antigravity/chrome-sandbox"
 fi
 
 # Install Desktop Entry
